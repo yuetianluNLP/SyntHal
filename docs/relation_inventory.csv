@@ -1,0 +1,16 @@
+relation_key,records,template
+company_ceo,200,Who is the CEO of {}?
+company_hq,200,Where are the headquarters of {}?
+landmark_in_country,200,What country is {} in?
+landmark_on_continent,200,What continent is {} on?
+person_father,200,Who is {}'s father?
+person_mother,200,Who is {}'s mother?
+person_occupation,200,What is {} by profession?
+person_plays_instrument,200,What instrument does {} play?
+person_plays_position_in_sport,200,Which position does {} play?
+person_plays_pro_sport,200,What sport does {} play?
+person_university,200,Which university did {} attend?
+product_by_company,200,Which company developed {}?
+star_constellation,200,What is the name of the constellation that {} is part of?
+superhero_archnemesis,200,Who is the superhero archnemesis of {}?
+superhero_person,200,What is {}'s secret identity?
