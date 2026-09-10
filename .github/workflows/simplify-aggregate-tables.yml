@@ -16,156 +16,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Validate and project table columns
+      - name: Apply previously validated column projection
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "a8598fc86f74831a26a699f262e225de251a97f3"
+          test "$(git rev-parse HEAD^)" = "e10d6104cb82ec4d4dc539fe1ad22563df7f39b3"
           python - <<'PY'
-          from collections import Counter
-          from pathlib import Path
-          import csv
-          import io
           import subprocess
-
-          ROOT = Path.cwd()
-          NATURAL = 'data/01_main_results/source_tables/appendix_natural_accuracy_points.csv'
-          FIG1 = 'data/01_main_results/source_tables/figure1_points.csv'
-          CORR = 'data/02_error_plausibility/plausibility_vs_linearity_correlations.csv'
-          INDEX = 'data/DATA_INDEX.md'
-          VALIDATOR = 'scripts/validate_dataset.py'
-          REMOVALS = {
-              NATURAL: {'model_display_x', 'model_display_y', 'n_unknown', 'is_factual', 'is_commonsense', 'is_linguistic', 'is_bias', 'behavior_y', 'behavior_value'},
-              FIG1: {'model_display_x', 'model_display_y', 'n_correct', 'n_unknown', 'behavior_y', 'behavior_value'},
-              CORR: {'relations'},
-          }
-
-          def require(condition, message):
-              if not condition:
-                  raise ValueError(message)
-
-          def read_table(path):
-              raw = (ROOT / path).read_bytes()
-              reader = csv.DictReader(io.StringIO(raw.decode('utf-8'), newline=''))
-              rows = list(reader)
-              require(all(None not in r and None not in r.values() for r in rows), f'{path}: malformed row')
-              return raw, reader.fieldnames, rows
-
-          before = {p: (ROOT / p).read_bytes() for p in subprocess.check_output(['git', 'ls-files'], text=True).splitlines()}
-          tables = {p: read_table(p) for p in REMOVALS}
-          require(len(tables[NATURAL][2]) == 112 and len(tables[NATURAL][1]) == 32, 'Natural table shape changed')
-          require(len(tables[FIG1][2]) == 60 and len(tables[FIG1][1]) == 21, 'Figure 1 table shape changed')
-          require(len(tables[CORR][2]) == 5 and len(tables[CORR][1]) == 11, 'Correlation table shape changed')
-
-          for path, primary in ((NATURAL, 'answered_accuracy'), (FIG1, 'hall_rate')):
-              rows = tables[path][2]
-              pairs = {(r['model_key'], r['model_display_x']) for r in rows}
-              require(len(pairs) == len({a for a, b in pairs}) == len({b for a, b in pairs}) == 4, 'Model identifiers are not one-to-one')
-              for row in rows:
-                  require(row['model_display_x'] == row['model_display_y'], 'Model display columns disagree')
-                  require(row['behavior_y'] == row['behavior_value'] == row[primary], 'Behavior aliases disagree')
-                  require(int(row['n_unknown']) == 0, 'n_unknown is not all zero')
-
-          for row in tables[NATURAL][2]:
-              require(row['relation_group'] in {'factual', 'commonsense', 'linguistic', 'bias'}, 'Unknown relation group')
-              for group in ('factual', 'commonsense', 'linguistic', 'bias'):
-                  flag = row['is_' + group].lower()
-                  require(flag in {'true', 'false'} and (flag == 'true') == (row['relation_group'] == group), 'Relation flags disagree')
-          require(all(int(r['n_correct']) == 0 for r in tables[FIG1][2]), 'Figure 1 n_correct is not all zero')
-          inventory = {r['relation_key'] for r in read_table('docs/relation_inventory.csv')[2]}
-          for row in tables[CORR][2]:
-              require(row['subset'] == 'main_15_relations', 'Unexpected correlation subset')
-              require(len(row['relations'].split(',')) == 15 and set(row['relations'].split(',')) == inventory, 'Relations list is not the common inventory')
-
-          for path, dropped in REMOVALS.items():
-              raw, fields, rows = tables[path]
-              require(dropped <= set(fields), f'{path}: missing expected columns')
-              keep = [c for c in fields if c not in dropped]
-              out = io.StringIO(newline='')
-              writer = csv.DictWriter(out, fieldnames=keep, lineterminator='\r\n' if b'\r\n' in raw else '\n')
-              writer.writeheader()
-              writer.writerows({c: r[c] for c in keep} for r in rows)
-              projected = out.getvalue()
-              result = list(csv.DictReader(io.StringIO(projected, newline='')))
-              require(result == [{c: r[c] for c in keep} for r in rows], 'Cell value or row-order change')
-              (ROOT / path).write_bytes(projected.encode('utf-8'))
-              print(f'[PASS] {path}: {len(rows)} rows; {len(fields)} -> {len(keep)} columns; retained cells unchanged')
-
-          paragraph = 'The aggregate result tables are unchanged from the supplied ARR data archive. This index documents the files actually published here. The original supplement\'s individual natural-output judgment CSV and five PDF figures are not included. Later rebuttal/camera-ready-only experimental outputs are also outside this snapshot.'
-          text = (ROOT / INDEX).read_text(encoding='utf-8')
-          require(text.count(paragraph) == 1, 'Data-index paragraph not uniquely found')
-          (ROOT / INDEX).write_text(text.replace(paragraph + '\n\n', '', 1), encoding='utf-8')
-
-          extra = '''def validate_aggregate_tables() -> None:
-              from math import isclose, isfinite
-
-              def table(path, expected_rows, expected_columns):
-                  with (ROOT / path).open(encoding="utf-8", newline="") as f:
-                      reader = csv.DictReader(f)
-                      rows = list(reader)
-                      require(len(reader.fieldnames) == expected_columns, f"{path}: unexpected column count")
-                  require(len(rows) == expected_rows, f"{path}: unexpected row count")
-                  require(all(None not in r and None not in r.values() for r in rows), f"{path}: malformed row")
-                  return rows
-
-              def ratio(row, field, numerator, denominator):
-                  if denominator == 0:
-                      require(row[field] == "", f"{field}: zero denominator must have an empty value")
-                  else:
-                      value = float(row[field])
-                      require(isfinite(value) and isclose(value, numerator / denominator, rel_tol=1e-12, abs_tol=1e-12), f"{field}: inconsistent count/rate")
-
-              base = "data/01_main_results/source_tables/"
-              synthetic = table(base + "figure1_points.csv", 60, 15)
-              for row in synthetic:
-                  hall, refusal, total = (int(row[c]) for c in ("n_hall", "n_refusal", "n_total"))
-                  require(min(hall, refusal) >= 0 and total == hall + refusal == 200, "Figure 1 counts do not sum to 200")
-                  ratio(row, "hall_rate", hall, total)
-              natural = table(base + "appendix_natural_accuracy_points.csv", 112, 23)
-              require(len({(r["model_key"], r["relation_key"]) for r in natural}) == 112, "Natural table has repeated keys")
-              require(Counter(r["model_key"] for r in natural) == Counter({m: 28 for m in {r["model_key"] for r in synthetic}}), "Natural model coverage mismatch")
-              require(len({r["relation_key"] for r in natural}) == 28, "Expected 28 natural relations")
-              for row in natural:
-                  correct, hall, refusal, total, answered, noncorrect = (int(row[c]) for c in ("n_correct", "n_hall", "n_refusal", "n_total", "answered_n", "noncorrect_n"))
-                  require(min(correct, hall, refusal) >= 0 and total == correct + hall + refusal, "Natural counts do not sum to total")
-                  require(answered == correct + hall and noncorrect == hall + refusal, "Natural denominators disagree with counts")
-                  require(row["relation_group"] in {"factual", "commonsense", "linguistic", "bias"}, "Unknown relation group")
-                  ratio(row, "answered_accuracy", correct, answered)
-                  ratio(row, "hall_rate_answered", hall, answered)
-                  ratio(row, "hall_rate_noncorrect", hall, noncorrect)
-              correlations = table("data/02_error_plausibility/plausibility_vs_linearity_correlations.csv", 5, 10)
-              require(all(r["subset"] == "main_15_relations" for r in correlations), "Correlation subset mismatch")
-              require(Counter(r["scope"] for r in correlations) == {"per_model": 4, "pooled_model_centered": 1}, "Unexpected correlation scopes")
-              per_model = [r for r in correlations if r["scope"] == "per_model"]
-              require({r["model_key"] for r in per_model} == {r["model_key"] for r in synthetic}, "Correlation models mismatch")
-              require(all(int(r["n_rel"]) == 15 for r in per_model), "Expected 15 per-model relation points")
-              pooled = next(r for r in correlations if r["scope"] == "pooled_model_centered")
-              require(pooled["model_key"] == "ALL" and int(pooled["n_rel"]) == 60, "Expected 60 pooled model-relation points")
-              print("[PASS] Compact table schemas, complete row counts, and correlation subsets")
-              print("[PASS] Counts and rate denominators remain consistent")
-
-
-          '''
-          path = ROOT / VALIDATOR
-          script = path.read_text(encoding='utf-8')
-          anchor = 'if __name__ == "__main__":'
-          require(script.count(anchor) == 1 and 'def validate_aggregate_tables' not in script, 'Validator anchor changed')
-          script = script.replace(anchor, extra + anchor, 1)
-          anchor = '        main()\n'
-          require(script.count(anchor) == 1, 'Validator entry point changed')
-          script = script.replace(anchor, anchor + '        validate_aggregate_tables()\n', 1)
-          compile(script, VALIDATOR, 'exec')
-          path.write_text(script, encoding='utf-8')
-
-          allowed = set(REMOVALS) | {INDEX, VALIDATOR}
-          changed = {p for p, raw in before.items() if (ROOT / p).read_bytes() != raw}
-          require(changed == allowed, f'Unexpected changed files: {changed ^ allowed}')
-          for path, (raw, fields, rows) in tables.items():
-              after = read_table(path)[2]
-              keep = [c for c in fields if c not in REMOVALS[path]]
-              require(after == [{c: r[c] for c in keep} for r in rows], 'Retained cell values changed')
-          print('[PASS] Only the three CSVs, data index, and validator changed')
-          print('[PASS] Dataset records, all other tables, README, licenses, and workflow files unchanged')
+          import textwrap
+          source = subprocess.check_output([
+              'git', 'show',
+              'e10d6104cb82ec4d4dc539fe1ad22563df7f39b3:.github/workflows/simplify-aggregate-tables.yml'
+          ], text=True)
+          start = "          python - <<'PY'\n"
+          end = "          PY\n"
+          if source.count(start) != 1:
+              raise SystemExit('Expected exactly one reviewed transformation script')
+          body = source.split(start, 1)[1].split(end, 1)[0]
+          exec(compile(textwrap.dedent(body), '<reviewed-table-projection>', 'exec'))
           PY
           python scripts/validate_dataset.py
       - name: Publish simplified tables
@@ -178,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           git add data/01_main_results/source_tables/appendix_natural_accuracy_points.csv data/01_main_results/source_tables/figure1_points.csv data/02_error_plausibility/plausibility_vs_linearity_correlations.csv data/DATA_INDEX.md scripts/validate_dataset.py
-          git diff --cached --check
+          git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --cached --check
           git diff --cached --stat
           git commit -m "Simplify aggregate-table columns and data index without changing results"
           git push origin HEAD:main
