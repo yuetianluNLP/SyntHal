@@ -46,11 +46,9 @@ Each line is one JSON object. Each record has six fields:
 
 The synthetic prompts have no gold object answers. Do not use the gold objects in the separate natural-LRE analysis tables as answers for SyntHal prompts.
 
-## Accompanying analyses and release scope
+## Accompanying analyses
 
-The aggregate tables include the Figure 1 SyntHal results, Figure 2 natural-output plausibility results, natural answered-case accuracy, and gold-object concentration controls. These are the ARR snapshot. They do not include later rebuttal or camera-ready-only faithfulness, OLS-sensitivity, entityhood, or attestedness experiments.
-
-The ARR supplement's large `error_analysis.csv` (13,960 individual natural-output judgments), its five figure PDFs, and the original experimental software are **not included in this repository release**. The validation script here checks the released files; it does not rerun the paper's model experiments.
+The accompanying aggregate tables report the ARR submission results for Figure 1 (SyntHal hallucination), Figure 2 (natural-output plausibility), natural answered-case accuracy, and gold-object concentration controls.
 
 For natural-LRE tables, a response labeled `Hallucination` means a committed non-gold response under the released evaluation protocol. A gold mismatch is not necessarily a verified factual falsehood. Likewise, a plausible relation filler need not be correct for the queried subject.
 
