@@ -15,6 +15,4 @@
 - [Plausibility correlations](02_error_plausibility/plausibility_vs_linearity_correlations.csv): 5 rows.
 - [Gold-object complexity controls](03_control/gold_object_complexity_pooled_regressions.csv): 12 rows.
 
-The aggregate result tables are unchanged from the supplied ARR data archive. This index documents the files actually published here. The original supplement's individual natural-output judgment CSV and five PDF figures are not included. Later rebuttal/camera-ready-only experimental outputs are also outside this snapshot.
-
 See [terms](LICENSE_AND_TERMS.md).
